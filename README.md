@@ -1,15 +1,44 @@
 # winds
 
-One-shot Windows provisioning for a data-science workstation. Run one script
-on a fresh corporate machine and get R (with INLA, tidyverse, lme4,
-alphaSimR), Rtools, Python, Positron, VS Code, Docker, Claude Code, OpenCode,
-Ollama, C++/Fortran compilers, and an OpenBLAS-backed R for parallel linear
-algebra — all idempotent, so re-running the script on an already-provisioned
-machine is safe.
+One-shot Windows provisioning for a data-science workstation. Run one script on
+a fresh corporate machine and get a complete, tuned environment — all
+idempotent, so re-running it on an already-provisioned machine is safe.
+
+- **R** with ~90 packages: INLA/inlabru/fmesher, tidyverse, lme4, MCMCglmm,
+  AlphaSimR, AGHmatrix, bWGR, the sf/terra geospatial stack, and Bioconductor
+  (impute, LEA, Rgraphviz, graph, EBImage) — on an **OpenBLAS** backend for
+  multi-threaded linear algebra.
+- **Python** with ~35 packages, plus **PyTorch** (CUDA wheels auto-selected
+  when an NVIDIA GPU is present) and **TensorFlow**.
+- **Larger-than-RAM tooling**: duckdb, polars, arrow/Parquet, fst, collapse,
+  and file-backed matrices (bigstatsr/bigsnpr) for genomic-scale data.
+- **Toolchains**: Rtools, MinGW-w64 (gcc/g++/gfortran), Graphviz.
+- **IDEs & tools**: Positron, VS Code, Docker Desktop, Claude Code, OpenCode,
+  Ollama, Git/Git LFS, Quarto/Pandoc/TinyTeX, PowerShell 7, Windows Terminal.
+- **Windows tuning for large data**: Defender exclusions, power plan, long
+  paths, renv cache — the changes that usually beat any library swap.
+- **Verification**: a diagnostic pass that benchmarks BLAS, load-tests native
+  packages, and proves CPU parallelism and GPU use rather than assuming them.
+
+## Contents
+
+- [Prerequisites](#prerequisites) · [Quick start](#quick-start) ·
+  [Re-running](#re-running-on-an-already-provisioned-machine) ·
+  [Usage & flags](#usage) · [What gets installed](#what-gets-installed)
+- [Working with large datasets on Windows](#working-with-large-datasets-on-windows)
+  — Windows tuning, thread oversubscription, the out-of-memory toolkit
+- [GPU support](#gpu-support-read-this-before-expecting-gpu-training)
+  — **read before expecting GPU training**
+- [Licensing](#licensing) — **Docker Desktop is not free for larger orgs**
+- [Reproducibility](#reproducibility) · [Troubleshooting](#troubleshooting) ·
+  [Gotchas](#gotchas) · [Verifying the install](#verifying-the-install)
 
 ## Prerequisites
 
 - Windows 10/11 with a local Administrator account.
+- **~40 GB free disk space** and 8 GB RAM minimum. The PyTorch/TensorFlow
+  wheels, Docker Desktop, Rtools/MinGW and TinyTeX dominate that; use
+  `-SkipMl` to cut roughly 5–10 GB.
 - Internet access to `chocolatey.org`, `github.com`, `pypi.org`,
   `cloud.r-project.org`, `bioconductor.org`, `inla.r-inla-download.org`,
   `download.pytorch.org`, and `npmjs.com`. Behind
@@ -114,7 +143,7 @@ Run only R and Python setup on a machine that already has the IDEs/tools:
 |---|---|
 | `-SkipCompilers` | Rtools, MinGW-w64 |
 | `-SkipR` | R, OpenBLAS swap, R package restore |
-| `-SkipPython` | Python, venv, pip install (also skips `-SkipMl`, which depends on the venv) |
+| `-SkipPython` | Python, venv, pip install — also skips the ML stage, which needs the venv |
 | `-SkipMl` | PyTorch, TensorFlow and the ML benchmark (saves a multi-GB download) |
 | `-SkipIdes` | VS Code, Docker Desktop, Positron |
 | `-SkipDocker` | Just Docker Desktop, while still installing VS Code and Positron |
@@ -152,9 +181,41 @@ anything:
 | `modules/07-ml.ps1` | PyTorch (CUDA or CPU wheels, auto-detected), TensorFlow, GPU/parallelism benchmark |
 | `modules/08-optimize.ps1` | Windows tuning for large data: Defender exclusions, power plan, long paths, renv cache, `.Rprofile`, OneDrive check |
 
-Edit `config.ps1` to change package lists/versions — it's the only file you
-should need to touch for routine updates (e.g. bumping the Python version,
-adding a Chocolatey package, changing the Positron winget ID).
+### Repository layout
+
+```
+install.ps1              Orchestrator: runs modules 00-08, then diagnostics
+config.ps1               Central package lists, CUDA index, tuning paths
+modules/
+  _helpers.ps1           Shared: admin check, choco wrapper, logging
+  00-prereqs.ps1 ... 08-optimize.ps1
+r/
+  install_packages.R     renv restore/bootstrap; verifies nothing is missing
+  check_packages.R       Load-tests 37 native packages (installed != loadable)
+  benchmark.R            Matrix-multiply throughput; confirms OpenBLAS is live
+  renv.lock              Pinned R versions (commit this)
+python/
+  requirements.txt       Package list (edit this)
+  requirements.lock.txt  Frozen versions (generated; commit this)
+  ml_benchmark.py        CPU-parallelism and GPU verification
+diagnostics/
+  diagnose.ps1           Full PASS/FAIL report
+  logs/                  Timestamped run history (gitignored)
+```
+
+`config.ps1` is the only file you should need to touch for routine updates:
+
+| Key | Controls |
+|---|---|
+| `<Stage>.ChocoPackages` | Chocolatey packages per stage |
+| `R.SystemChocoPackages` | System deps installed alongside R (Graphviz) |
+| `Python.VenvPath` | Where the virtual environment lives |
+| `Ml.TorchCudaIndex` | CUDA wheel variant (`cu118`/`cu126`/`cu128`) |
+| `Ml.TensorFlowPackage` | TensorFlow package/pin |
+| `Optimize.RenvCachePath` | Shared renv cache location |
+| `Optimize.ExtraExclusionPaths` | **Add your data folders here** for Defender exclusions |
+| `Ides.PositronWingetId` | Positron's winget ID |
+| `OpenBlas.GitHubRepo` / `AssetPattern` | Which OpenBLAS release to fetch |
 
 R packages come from three sources, each installed by
 `r/install_packages.R`: `cran_packages` (CRAN, most of the list — Rcpp,
@@ -381,10 +442,12 @@ re-resolving latest-and-possibly-different ones.
   non-CRAN repo; a flaky connection or corporate proxy blocking
   `inla.r-inla-download.org` is the usual cause. Re-run
   `Rscript r\install_packages.R` once connectivity is confirmed.
-- **`Rgraphviz` install fails** — it needs the system Graphviz binary
-  (installed via Chocolatey alongside R). If it was skipped, run
-  `choco install graphviz -y` manually and re-run `Rscript
-  r\install_packages.R`.
+- **`Rgraphviz` install fails** — its Bioconductor binary bundles Graphviz, so
+  this is usually a source-build fallback. Confirm
+  `options(pkgType = "binary")` took effect, then retry with
+  `BiocManager::install("Rgraphviz", update = FALSE, ask = FALSE)`. The
+  Chocolatey `graphviz` package provides the standalone `dot` CLI and is not
+  required by the R package.
 - **A Bioconductor package fails to install** (`impute`, `LEA`,
   `Rgraphviz`, `graph`, `EBImage`) — check `BiocManager::valid()` output for
   version mismatches against your R version, then retry with
@@ -422,7 +485,7 @@ re-resolving latest-and-possibly-different ones.
   toolchain ahead of Rtools on the system PATH. R manages Rtools' PATH
   entries itself when compiling packages from source; mixing the two
   toolchains causes ABI mismatches (this bites INLA's compiled extras and
-  alphaSimR's Rcpp code first).
+  AlphaSimR's Rcpp code first).
 - **INLA** isn't on CRAN — `install_packages.R` installs it from
   `https://inla.r-inla-download.org/R/stable` separately.
 - **OpenBLAS swap**: `modules/02-r.ps1` downloads the latest OpenBLAS Windows
@@ -438,9 +501,18 @@ re-resolving latest-and-possibly-different ones.
 ## Verifying the install
 
 `diagnostics/diagnose.ps1` (run automatically at the end of `install.ps1`)
-checks every tool is on PATH, runs `r/benchmark.R` to confirm OpenBLAS is
-active and report matrix-multiply throughput, runs `r/check_packages.R` to
-load-test the compiled/native R packages, and checks NumPy's BLAS backend.
+performs five classes of check:
+
+1. **Tools on PATH** — R, Python, Git, Docker, Ollama, Claude Code, compilers,
+   Quarto, Pandoc, with versions.
+2. **BLAS** — `r/benchmark.R` confirms OpenBLAS is actually the loaded backend
+   and reports matrix-multiply throughput in GFLOPS.
+3. **R packages** — `r/check_packages.R` load-tests 37 compiled/native packages.
+4. **ML** — `python/ml_benchmark.py` measures CPU thread scaling and GPU
+   compute (see [GPU support](#gpu-support-read-this-before-expecting-gpu-training)).
+5. **Windows tuning** — re-checks the Tier 0 tweaks (Defender exclusion, power
+   plan, long paths, OneDrive, renv cache) so a policy-blocked one is visible
+   instead of silently costing throughput.
 
 Two separate R checks, because they catch different failures:
 

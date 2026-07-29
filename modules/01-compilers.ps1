@@ -11,5 +11,5 @@ Invoke-ChocoInstall -Packages $Config.Compilers.ChocoPackages
 # source. Do not manually prepend the standalone MinGW gcc/g++/gfortran to
 # the system PATH ahead of Rtools' toolchain -- mixing the two causes ABI
 # mismatches when building R packages from source (e.g. INLA extras,
-# alphaSimR's Rcpp code).
+# AlphaSimR's Rcpp code).
 Write-Ok "Compilers installed (Rtools for R package builds, MinGW-w64 for standalone C++/Fortran)"
