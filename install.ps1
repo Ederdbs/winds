@@ -7,9 +7,11 @@
 .EXAMPLE
     .\install.ps1
     .\install.ps1 -SkipDocker -SkipDiagnostics
+    .\install.ps1 -SkipCuda           # skip the ~3 GB CUDA Toolkit (nvcc)
 #>
 param(
     [switch]$SkipCompilers,
+    [switch]$SkipCuda,
     [switch]$SkipR,
     [switch]$SkipPython,
     [switch]$SkipMl,
@@ -31,7 +33,7 @@ if (-not (Test-IsAdmin)) {
 }
 
 & "$PSScriptRoot\modules\00-prereqs.ps1"
-if (-not $SkipCompilers) { & "$PSScriptRoot\modules\01-compilers.ps1" }
+if (-not $SkipCompilers) { & "$PSScriptRoot\modules\01-compilers.ps1" -SkipCuda:$SkipCuda }
 if (-not $SkipR)         { & "$PSScriptRoot\modules\02-r.ps1" }
 if (-not $SkipPython)    { & "$PSScriptRoot\modules\03-python.ps1" }
 if (-not $SkipIdes)      { & "$PSScriptRoot\modules\04-ides.ps1" -SkipDocker:$SkipDocker }

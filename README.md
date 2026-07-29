@@ -12,7 +12,8 @@ idempotent, so re-running it on an already-provisioned machine is safe.
   when an NVIDIA GPU is present) and **TensorFlow**.
 - **Larger-than-RAM tooling**: duckdb, polars, arrow/Parquet, fst, collapse,
   and file-backed matrices (bigstatsr/bigsnpr) for genomic-scale data.
-- **Toolchains**: Rtools, MinGW-w64 (gcc/g++/gfortran), Graphviz.
+- **Toolchains**: Rtools, MinGW-w64 (gcc/g++/gfortran), Graphviz, and the
+  CUDA Toolkit (`nvcc`) when an NVIDIA GPU is present.
 - **IDEs & tools**: Positron, VS Code, Docker Desktop, Claude Code, OpenCode,
   Ollama, Git/Git LFS, Quarto/Pandoc/TinyTeX, PowerShell 7, Windows Terminal.
 - **Windows tuning for large data**: Defender exclusions, power plan, long
@@ -38,7 +39,8 @@ idempotent, so re-running it on an already-provisioned machine is safe.
 - Windows 10/11 with a local Administrator account.
 - **~40 GB free disk space** and 8 GB RAM minimum. The PyTorch/TensorFlow
   wheels, Docker Desktop, Rtools/MinGW and TinyTeX dominate that; use
-  `-SkipMl` to cut roughly 5–10 GB.
+  `-SkipMl` to cut roughly 5–10 GB. On an NVIDIA machine add ~3 GB for the
+  CUDA Toolkit, or pass `-SkipCuda`.
 - Internet access to `chocolatey.org`, `github.com`, `pypi.org`,
   `cloud.r-project.org`, `bioconductor.org`, `inla.r-inla-download.org`,
   `download.pytorch.org`, and `npmjs.com`. Behind
@@ -141,7 +143,8 @@ Run only R and Python setup on a machine that already has the IDEs/tools:
 
 | Flag | Skips |
 |---|---|
-| `-SkipCompilers` | Rtools, MinGW-w64 |
+| `-SkipCompilers` | Rtools, MinGW-w64, CUDA Toolkit |
+| `-SkipCuda` | Just the CUDA Toolkit (~3 GB), while still installing Rtools and MinGW-w64 |
 | `-SkipR` | R, OpenBLAS swap, R package restore |
 | `-SkipPython` | Python, venv, pip install — also skips the ML stage, which needs the venv |
 | `-SkipMl` | PyTorch, TensorFlow and the ML benchmark (saves a multi-GB download) |
@@ -172,7 +175,7 @@ anything:
 | Module | Contents |
 |---|---|
 | `modules/00-prereqs.ps1` | Chocolatey, PowerShell 7, Windows Terminal |
-| `modules/01-compilers.ps1` | Rtools (R's build toolchain), standalone MinGW-w64 (gcc/g++/gfortran) |
+| `modules/01-compilers.ps1` | Rtools (R's build toolchain), standalone MinGW-w64 (gcc/g++/gfortran), CUDA Toolkit / `nvcc` (only when an NVIDIA GPU is detected) |
 | `modules/02-r.ps1` | R, OpenBLAS swap, R packages via `renv` |
 | `modules/03-python.ps1` | Python, venv, packages via `pip` |
 | `modules/04-ides.ps1` | VS Code, Docker Desktop, Positron |
@@ -331,9 +334,19 @@ accordingly. Two Windows-specific facts drive everything here:
 `pip install torch` silently gives you no GPU. The module installs from
 `$Config.Ml.TorchCudaIndex` when an NVIDIA GPU is found, and falls back to CPU
 wheels (with a warning) if the CUDA wheel won't install. You do **not** need
-the multi-GB CUDA Toolkit — the wheels bundle their own CUDA runtime and
-cuDNN, so a current NVIDIA driver is enough. Install the Toolkit only if you
-need `nvcc` to compile custom kernels.
+the CUDA Toolkit for this — the wheels bundle their own CUDA runtime and
+cuDNN, so a current NVIDIA driver is enough.
+
+**The CUDA Toolkit** is installed separately by `modules/01-compilers.ps1`,
+and only when `nvidia-smi` reports a working driver — a CPU-only machine
+never downloads it. It gives you `nvcc` (compiling your own CUDA kernels),
+plus the runtime that CuPy, Numba's `cuda` target and Nsight expect to find
+on the system. It is roughly 3 GB; skip it with `-SkipCuda` if you only ever
+run prebuilt torch. `$Config.Cuda.Version` is empty by default (latest
+Chocolatey ships); pin it — e.g. `'12.6.0'` to match the `cu126` wheel index
+— when you compile kernels that must match the runtime torch loads. `nvcc`
+lands on the machine PATH, so a shell opened before the install won't see it
+until it restarts; the diagnostic reports this rather than failing silently.
 
 **TensorFlow — GPU does not work on native Windows, at all.** TensorFlow
 2.10 was the last release supporting GPU on native Windows; from 2.11 onward
@@ -398,7 +411,9 @@ proprietary but free to use and redistribute under NVIDIA's terms — no
 subscription, no license key.
 
 Everything else is genuinely free and open source: R (GPL), Python (PSF),
-OpenBLAS (BSD), Rtools/MinGW-w64/gcc/gfortran (GPL), Git (GPL-2), Git LFS
+OpenBLAS (BSD), Rtools/MinGW-w64/gcc/gfortran (GPL), CUDA Toolkit (NVIDIA
+EULA — free to use and redistribute the runtime, see the EULA before shipping
+it inside a product), Git (GPL-2), Git LFS
 (MIT), Quarto (MIT), Pandoc (GPL), TinyTeX/TeX Live (free), Node.js (MIT),
 PowerShell 7 (MIT), Windows Terminal (MIT), Chocolatey (Apache-2.0, community
 edition), Graphviz (EPL), and every R and Python package in the lists

@@ -10,6 +10,19 @@ $Config = @{
         # mingw: standalone gcc/g++/gfortran for general C++/Fortran work.
         ChocoPackages = @('rtools', 'mingw')
     }
+    Cuda = @{
+        # The CUDA Toolkit is NOT required to run PyTorch or TensorFlow -- their
+        # pip wheels bundle the CUDA runtime and cuDNN (see Ml below). Install it
+        # for nvcc (compiling custom kernels), CuPy, Numba's cuda target, or
+        # Nsight profiling. Costs ~3 GB, so it is skipped when no NVIDIA GPU is
+        # present and can be skipped outright with -SkipCuda.
+        ChocoPackage = 'cuda'
+        # Empty = whatever Chocolatey currently ships as latest. Pin a version
+        # to keep nvcc in step with the CUDA runtime in the torch wheels below,
+        # e.g. '12.6.0' to match the cu126 index. A mismatch is fine for merely
+        # running torch, but matters when you compile kernels against it.
+        Version      = ''
+    }
     R = @{
         ChocoPackages = @('r.project')
         # System dependency for the Rgraphviz Bioconductor package.

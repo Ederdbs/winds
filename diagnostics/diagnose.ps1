@@ -41,6 +41,16 @@ Test-Tool "Pandoc" "pandoc"
 Test-Tool "gcc (MinGW)" "gcc"
 Test-Tool "gfortran (MinGW)" "gfortran"
 
+# CUDA Toolkit: only meaningful on an NVIDIA machine, so a CPU-only box gets no
+# FAIL for a toolkit it was never supposed to install.
+if (Test-CommandExists 'nvidia-smi') {
+    if (Test-CommandExists 'nvcc') {
+        Add-Result "CUDA Toolkit (nvcc)" $true ((& nvcc --version | Select-String 'release') -replace '^\s+', '')
+    } else {
+        Add-Result "CUDA Toolkit (nvcc)" $false "nvcc not on PATH -- run install.ps1 without -SkipCuda, or restart the shell"
+    }
+}
+
 # R: BLAS backend + matrix-multiply benchmark.
 if (Test-CommandExists 'Rscript') {
     $benchOutput = & Rscript "r\benchmark.R" 2>&1

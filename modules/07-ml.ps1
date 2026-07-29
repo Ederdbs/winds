@@ -14,18 +14,11 @@ if (-not (Test-Path $pip)) {
 Write-Step "Detecting GPU hardware"
 
 # Report every adapter Windows knows about (covers AMD/Intel too), then check
-# specifically for a working NVIDIA stack -- nvidia-smi only exists when the
-# NVIDIA driver is installed, which is what actually matters for CUDA.
+# specifically for a working NVIDIA stack.
 Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue |
     ForEach-Object { Write-Host "  GPU: $($_.Name) (driver $($_.DriverVersion))" -ForegroundColor Yellow }
 
-$hasNvidia = $false
-if (Test-CommandExists 'nvidia-smi') {
-    nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader 2>&1 | ForEach-Object {
-        Write-Host "  NVIDIA: $_" -ForegroundColor Yellow
-    }
-    $hasNvidia = ($LASTEXITCODE -eq 0)
-}
+$hasNvidia = Test-NvidiaGpu
 
 if ($hasNvidia) {
     Write-Ok "NVIDIA GPU detected -- installing CUDA-enabled PyTorch"
