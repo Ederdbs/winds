@@ -113,7 +113,16 @@ Edit `config.ps1` to change package lists/versions — it's the only file you
 should need to touch for routine updates (e.g. bumping the Python version,
 adding a Chocolatey package, changing the Positron winget ID).
 
-To add or remove an **R package**, edit `required_packages` in
+R packages come from three sources, each installed by
+`r/install_packages.R`: `cran_packages` (CRAN, most of the list — Rcpp,
+tidyverse, sf/terra/raster geospatial stack, ggplot2 ecosystem, MCMCglmm,
+alphaSimR, etc.), `bioc_packages` (Bioconductor, via `BiocManager::install`
+— `impute`, `LEA`, `Rgraphviz`, `graph`, `EBImage`), and INLA/fmesher/inlabru
+(INLA's own repository, installed in that order since inlabru depends on
+INLA). `Rgraphviz` also needs the system Graphviz binary, installed via
+Chocolatey in `modules/02-r.ps1` (`$Config.R.SystemChocoPackages`).
+
+To add or remove an **R package**, edit the relevant list in
 `r/install_packages.R`, run `.\modules\02-r.ps1` (or the full
 `install.ps1`), then commit the updated `r/renv.lock`.
 
@@ -158,6 +167,14 @@ re-resolving latest-and-possibly-different ones.
   non-CRAN repo; a flaky connection or corporate proxy blocking
   `inla.r-inla-download.org` is the usual cause. Re-run
   `Rscript r\install_packages.R` once connectivity is confirmed.
+- **`Rgraphviz` install fails** — it needs the system Graphviz binary
+  (installed via Chocolatey alongside R). If it was skipped, run
+  `choco install graphviz -y` manually and re-run `Rscript
+  r\install_packages.R`.
+- **A Bioconductor package fails to install** (`impute`, `LEA`,
+  `Rgraphviz`, `graph`, `EBImage`) — check `BiocManager::valid()` output for
+  version mismatches against your R version, then retry with
+  `BiocManager::install("<package>", update = FALSE, ask = FALSE)`.
 - **Docker Desktop needs WSL2 / a reboot** — this is a Windows requirement,
   not a bug in this repo. Follow the on-screen Docker prompt, reboot, and
   re-run `.\install.ps1`.

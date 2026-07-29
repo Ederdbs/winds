@@ -7,6 +7,9 @@
 Write-Step "Installing R"
 Invoke-ChocoInstall -Packages $Config.R.ChocoPackages
 
+Write-Step "Installing R package system dependencies"
+Invoke-ChocoInstall -Packages $Config.R.SystemChocoPackages
+
 if (-not (Test-CommandExists 'Rscript')) {
     throw "Rscript.exe not found on PATH after installing R. Restart the shell and re-run this script."
 }

@@ -12,6 +12,8 @@ $Config = @{
     }
     R = @{
         ChocoPackages = @('r.project')
+        # System dependency for the Rgraphviz Bioconductor package.
+        SystemChocoPackages = @('graphviz')
     }
     Python = @{
         ChocoPackages = @('python3')
