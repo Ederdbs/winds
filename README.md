@@ -11,7 +11,8 @@ machine is safe.
 
 - Windows 10/11 with a local Administrator account.
 - Internet access to `chocolatey.org`, `github.com`, `pypi.org`,
-  `cloud.r-project.org`, `inla.r-inla-download.org`, and `npmjs.com`. Behind
+  `cloud.r-project.org`, `bioconductor.org`, `inla.r-inla-download.org`,
+  `download.pytorch.org`, and `npmjs.com`. Behind
   a corporate proxy, set `HTTP_PROXY`/`HTTPS_PROXY` before running, and make
   sure Chocolatey and pip are configured to use it if those hosts aren't
   reachable directly.
@@ -20,9 +21,41 @@ machine is safe.
 
 ## Quick start
 
-1. Clone or copy this repository onto the new machine.
-2. Right-click PowerShell → **Run as Administrator**.
-3. `cd` into the repo folder and run:
+1. Right-click PowerShell → **Run as Administrator**.
+
+2. Get this repository onto the machine. On a *fresh* Windows install Git
+   isn't there yet (this repo installs it in module 06), so pick whichever
+   applies:
+
+   **If Git is already available:**
+
+   ```powershell
+   cd $env:USERPROFILE
+   git clone https://github.com/Ederdbs/winds.git
+   cd winds
+   ```
+
+   **If Git is not installed yet** — bootstrap it with `winget`, which ships
+   with Windows 10/11:
+
+   ```powershell
+   winget install --id Git.Git --silent --accept-package-agreements --accept-source-agreements
+   $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
+   cd $env:USERPROFILE
+   git clone https://github.com/Ederdbs/winds.git
+   cd winds
+   ```
+
+   **No Git and no winget** — download and extract the ZIP instead:
+
+   ```powershell
+   cd $env:USERPROFILE
+   Invoke-WebRequest -Uri https://github.com/Ederdbs/winds/archive/refs/heads/main.zip -OutFile winds.zip
+   Expand-Archive .\winds.zip -DestinationPath . -Force
+   cd winds-main
+   ```
+
+3. From the repo folder, run:
 
    ```powershell
    Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
@@ -30,9 +63,11 @@ machine is safe.
    ```
 
 4. Grab coffee. A full run (everything, cold machine, decent connection)
-   typically takes **30–60 minutes** — Rtools, MinGW, Docker Desktop, and
-   INLA's compiled dependencies are the slowest parts. `install.ps1` prints
-   a `==> Step name` banner before each stage so you can see where it is.
+   typically takes **45–90 minutes** — Rtools, MinGW, Docker Desktop, INLA's
+   compiled dependencies and the PyTorch/TensorFlow wheels (several GB) are
+   the slowest parts. Add `-SkipMl` to skip the ML download if you don't need
+   it. `install.ps1` prints a `==> Step name` banner before each stage so you
+   can see where it is.
 5. It finishes by running `diagnostics/diagnose.ps1` automatically and
    printing a PASS/FAIL table. Fix any `[FAIL]` line before trusting the
    machine for real work (see [Troubleshooting](#troubleshooting)).
@@ -55,6 +90,10 @@ reinstall:
 - R packages: `renv::restore()` from the committed lockfile — only installs
   what's missing/out of date.
 - Python packages: reused from `requirements.lock.txt` once it exists.
+- PyTorch/TensorFlow: `pip install --upgrade` no-ops when already current.
+  Note these are deliberately **not** in `requirements.txt` — the correct
+  torch wheel is machine-specific (CUDA variant vs CPU), so pinning it in a
+  shared lockfile would push the wrong build onto the next machine.
 - SSH key: skipped if `~/.ssh/id_ed25519` already exists.
 
 ## Usage
@@ -75,7 +114,8 @@ Run only R and Python setup on a machine that already has the IDEs/tools:
 |---|---|
 | `-SkipCompilers` | Rtools, MinGW-w64 |
 | `-SkipR` | R, OpenBLAS swap, R package restore |
-| `-SkipPython` | Python, venv, pip install |
+| `-SkipPython` | Python, venv, pip install (also skips `-SkipMl`, which depends on the venv) |
+| `-SkipMl` | PyTorch, TensorFlow and the ML benchmark (saves a multi-GB download) |
 | `-SkipIdes` | VS Code, Docker Desktop, Positron |
 | `-SkipDocker` | Just Docker Desktop, while still installing VS Code and Positron |
 | `-SkipAiTools` | Node.js, Claude Code, OpenCode, Ollama |
@@ -108,6 +148,7 @@ anything:
 | `modules/04-ides.ps1` | VS Code, Docker Desktop, Positron |
 | `modules/05-ai-tools.ps1` | Node.js, Claude Code, OpenCode, Ollama |
 | `modules/06-git-quarto.ps1` | Git, Git LFS, SSH key, Quarto, Pandoc, TinyTeX |
+| `modules/07-ml.ps1` | PyTorch (CUDA or CPU wheels, auto-detected), TensorFlow, GPU/parallelism benchmark |
 
 Edit `config.ps1` to change package lists/versions — it's the only file you
 should need to touch for routine updates (e.g. bumping the Python version,
@@ -145,6 +186,55 @@ To add or remove a **Python package**, edit `python/requirements.txt`,
 delete `python/requirements.lock.txt` so it gets regenerated, run
 `.\modules\03-python.ps1`, then commit the new lock file.
 
+## GPU support (read this before expecting GPU training)
+
+`modules/07-ml.ps1` detects your hardware with `nvidia-smi` and installs
+accordingly. Two Windows-specific facts drive everything here:
+
+**PyTorch — GPU works natively.** But the default PyPI wheel on Windows is
+**CPU-only**; CUDA builds live on a separate index. A plain
+`pip install torch` silently gives you no GPU. The module installs from
+`$Config.Ml.TorchCudaIndex` when an NVIDIA GPU is found, and falls back to CPU
+wheels (with a warning) if the CUDA wheel won't install. You do **not** need
+the multi-GB CUDA Toolkit — the wheels bundle their own CUDA runtime and
+cuDNN, so a current NVIDIA driver is enough. Install the Toolkit only if you
+need `nvcc` to compile custom kernels.
+
+**TensorFlow — GPU does not work on native Windows, at all.** TensorFlow
+2.10 was the last release supporting GPU on native Windows; from 2.11 onward
+it is CPU-only there. This is Google's decision, not a gap in this script. The
+options are:
+
+1. **Run TensorFlow inside WSL2** — the supported route for TF on GPU on a
+   Windows machine, and the one to use for real training work.
+2. Pin `tensorflow<2.11` — *not* done here on purpose: it requires Python
+   ≤3.10 and has years of unpatched security fixes.
+3. `tensorflow-directml-plugin` — vendor-neutral (works with AMD/Intel too)
+   but lags upstream considerably.
+
+So on a native-Windows box expect **PyTorch on GPU, TensorFlow on CPU**. If
+your heavy work is TensorFlow, do it in WSL2 (`-SkipDocker` still installs
+WSL2 components via Docker Desktop, or enable WSL2 directly with
+`wsl --install`).
+
+To change the CUDA variant, edit `TorchCudaIndex` in `config.ps1` — `cu118`,
+`cu126` and `cu128` are offered; a newer variant needs a newer driver. Check
+https://pytorch.org/get-started/locally/ if unsure.
+
+### What the ML benchmark actually verifies
+
+`python/ml_benchmark.py` measures rather than trusts. Reporting
+`torch.get_num_threads() == 16` only proves what torch *intends* — a machine
+with a broken OpenMP/MKL setup reports 16 threads and still scales at 1.0x.
+So it times an identical 4096² matmul at 1 thread vs all cores and reports the
+observed speedup, failing below 1.5x on a multi-core box. For the GPU it calls
+`torch.cuda.synchronize()` before stopping the clock, because CUDA is
+asynchronous and without it you'd time the kernel *launch*, not the work.
+
+It exits non-zero when an NVIDIA GPU is present but `torch.cuda.is_available()`
+is `False` — the signature of CPU-only wheels having been installed by
+mistake, which is otherwise very easy to miss.
+
 ## Licensing
 
 Everything here is free of charge to install, but three items carry
@@ -166,6 +256,11 @@ Apache 2.0), or the Docker CLI/Engine directly inside WSL2, which is not
 covered by the Docker Desktop license. Remove `docker-desktop` from
 `$Config.Ides.ChocoPackages` (or always run with `-SkipDocker`) and install
 your chosen replacement instead.
+
+PyTorch (BSD-3) and TensorFlow (Apache-2.0) are both free and open source. The
+CUDA runtime and cuDNN bundled inside the PyTorch wheels are NVIDIA
+proprietary but free to use and redistribute under NVIDIA's terms — no
+subscription, no license key.
 
 Everything else is genuinely free and open source: R (GPL), Python (PSF),
 OpenBLAS (BSD), Rtools/MinGW-w64/gcc/gfortran (GPL), Git (GPL-2), Git LFS
@@ -220,6 +315,17 @@ re-resolving latest-and-possibly-different ones.
   `Rgraphviz`, `graph`, `EBImage`) — check `BiocManager::valid()` output for
   version mismatches against your R version, then retry with
   `BiocManager::install("<package>", update = FALSE, ask = FALSE)`.
+- **`[FAIL] torch cannot see the installed NVIDIA GPU`** — CPU-only wheels
+  got installed. Reinstall explicitly:
+  `.venv\Scripts\pip install --force-reinstall torch torchvision torchaudio
+  --index-url https://download.pytorch.org/whl/cu126`. If that fails, your
+  driver is likely too old for that CUDA variant — try `cu118`.
+- **`[FAIL] torch CPU parallelism only 1.0x`** — threading isn't working.
+  Check `OMP_NUM_THREADS` isn't pinned to 1 in your environment (some
+  corporate images set it), then re-run the benchmark.
+- **TensorFlow reports 0 GPUs** — expected on native Windows, see
+  [GPU support](#gpu-support-read-this-before-expecting-gpu-training). Not a
+  bug; use WSL2 for TensorFlow on GPU.
 - **Docker Desktop needs WSL2 / a reboot** — this is a Windows requirement,
   not a bug in this repo. Follow the on-screen Docker prompt, reboot, and
   re-run `.\install.ps1`.
@@ -273,6 +379,7 @@ Example output:
   [OK] R OpenBLAS active: OpenBLAS active: TRUE
   [OK] R key packages load: All 22 key R packages load successfully
   [OK] NumPy BLAS config: openblas64_ ...
+  [OK] ML libraries (torch/TF): CPU parallel speedup: 7.41x | GPU vs CPU speedup: 38.2x
   [FAIL] Docker: command 'docker' not found on PATH
 ...
 Log written to diagnostics\logs\diagnose_20260729_143210.log

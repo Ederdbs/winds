@@ -12,6 +12,7 @@ param(
     [switch]$SkipCompilers,
     [switch]$SkipR,
     [switch]$SkipPython,
+    [switch]$SkipMl,
     [switch]$SkipIdes,
     [switch]$SkipAiTools,
     [switch]$SkipGitQuarto,
@@ -35,6 +36,8 @@ if (-not $SkipPython)    { & "$PSScriptRoot\modules\03-python.ps1" }
 if (-not $SkipIdes)      { & "$PSScriptRoot\modules\04-ides.ps1" -SkipDocker:$SkipDocker }
 if (-not $SkipAiTools)   { & "$PSScriptRoot\modules\05-ai-tools.ps1" }
 if (-not $SkipGitQuarto) { & "$PSScriptRoot\modules\06-git-quarto.ps1" }
+# After Python: 07-ml needs the venv that 03-python creates.
+if (-not $SkipMl -and -not $SkipPython) { & "$PSScriptRoot\modules\07-ml.ps1" }
 
 if (-not $SkipDiagnostics) {
     & "$PSScriptRoot\diagnostics\diagnose.ps1"

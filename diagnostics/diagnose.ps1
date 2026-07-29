@@ -68,6 +68,19 @@ if (Test-CommandExists 'python') {
     Add-Result "NumPy BLAS config" $npPass (($npCheck | Select-Object -First 3) -join ' | ')
 }
 
+# ML: PyTorch/TensorFlow CPU parallelism and GPU. Reported as a single check;
+# full timings are printed above and captured in the log.
+$venvPython = ".venv\Scripts\python.exe"
+if (Test-Path $venvPython) {
+    $mlArgs = @("python\ml_benchmark.py")
+    if (Test-CommandExists 'nvidia-smi') { $mlArgs += '--expect-gpu' }
+    $mlOutput = & $venvPython @mlArgs 2>&1
+    $mlPass = ($LASTEXITCODE -eq 0)
+    $mlOutput | Out-String | Write-Host
+    $mlOutput | Out-String | Add-Content -Path $logFile
+    Add-Result "ML libraries (torch/TF)" $mlPass (($mlOutput | Select-String 'speedup|FAIL:' | Select-Object -First 3) -join ' | ')
+}
+
 Write-Step "Diagnostic report"
 $results | ForEach-Object {
     if ($_.Pass) { Write-Ok "$($_.Check): $($_.Detail)" } else { Write-Fail "$($_.Check): $($_.Detail)" }

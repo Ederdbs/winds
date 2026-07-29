@@ -19,6 +19,21 @@ $Config = @{
         ChocoPackages = @('python3')
         VenvPath      = "$PSScriptRoot\.venv"
     }
+    Ml = @{
+        # PyTorch on Windows defaults to CPU-ONLY wheels on PyPI. CUDA builds
+        # live on a separate index, so the URL below is what actually gets you
+        # a GPU-capable torch. Variants offered: cu118, cu126, cu128.
+        # Pick one matching your NVIDIA driver (newer variant = newer driver
+        # required); check https://pytorch.org/get-started/locally/ if unsure.
+        TorchCudaIndex   = 'https://download.pytorch.org/whl/cu126'
+        TorchPackages    = @('torch', 'torchvision', 'torchaudio')
+
+        # TensorFlow 2.10 was the LAST release supporting GPU on native
+        # Windows; 2.11+ is CPU-only there and GPU requires WSL2. We install
+        # current TensorFlow (CPU on Windows) rather than pinning the ancient
+        # 2.10 -- see the README "GPU support" section for the WSL2 route.
+        TensorFlowPackage = 'tensorflow'
+    }
     Ides = @{
         ChocoPackages       = @('vscode', 'docker-desktop')
         PositronWingetId    = 'Posit-PBC.Positron'
