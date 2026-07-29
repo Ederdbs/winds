@@ -16,6 +16,7 @@ param(
     [switch]$SkipIdes,
     [switch]$SkipAiTools,
     [switch]$SkipGitQuarto,
+    [switch]$SkipOptimize,
     [switch]$SkipDocker,
     [switch]$SkipDiagnostics
 )
@@ -38,6 +39,9 @@ if (-not $SkipAiTools)   { & "$PSScriptRoot\modules\05-ai-tools.ps1" }
 if (-not $SkipGitQuarto) { & "$PSScriptRoot\modules\06-git-quarto.ps1" }
 # After Python: 07-ml needs the venv that 03-python creates.
 if (-not $SkipMl -and -not $SkipPython) { & "$PSScriptRoot\modules\07-ml.ps1" }
+# Last: 08-optimize excludes the R library and venv from Defender, so it wants
+# them to exist already.
+if (-not $SkipOptimize) { & "$PSScriptRoot\modules\08-optimize.ps1" }
 
 if (-not $SkipDiagnostics) {
     & "$PSScriptRoot\diagnostics\diagnose.ps1"

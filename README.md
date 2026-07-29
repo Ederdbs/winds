@@ -120,6 +120,7 @@ Run only R and Python setup on a machine that already has the IDEs/tools:
 | `-SkipDocker` | Just Docker Desktop, while still installing VS Code and Positron |
 | `-SkipAiTools` | Node.js, Claude Code, OpenCode, Ollama |
 | `-SkipGitQuarto` | Git, Git LFS, SSH key, Quarto, Pandoc, TinyTeX |
+| `-SkipOptimize` | The Windows tuning pass (Defender exclusions, power plan, long paths, renv cache) |
 | `-SkipDiagnostics` | The automatic `diagnose.ps1` run at the end |
 
 Modules can also be run individually if you only need one piece, e.g. to
@@ -149,6 +150,7 @@ anything:
 | `modules/05-ai-tools.ps1` | Node.js, Claude Code, OpenCode, Ollama |
 | `modules/06-git-quarto.ps1` | Git, Git LFS, SSH key, Quarto, Pandoc, TinyTeX |
 | `modules/07-ml.ps1` | PyTorch (CUDA or CPU wheels, auto-detected), TensorFlow, GPU/parallelism benchmark |
+| `modules/08-optimize.ps1` | Windows tuning for large data: Defender exclusions, power plan, long paths, renv cache, `.Rprofile`, OneDrive check |
 
 Edit `config.ps1` to change package lists/versions — it's the only file you
 should need to touch for routine updates (e.g. bumping the Python version,
@@ -157,7 +159,9 @@ adding a Chocolatey package, changing the Positron winget ID).
 R packages come from three sources, each installed by
 `r/install_packages.R`: `cran_packages` (CRAN, most of the list — Rcpp,
 tidyverse, sf/terra/raster geospatial stack, ggplot2 ecosystem, MCMCglmm,
-AlphaSimR, etc.), `bioc_packages` (Bioconductor, via `BiocManager::install`
+AlphaSimR, the duckdb/fst/collapse large-data stack, bigstatsr/bigsnpr and
+profiling tools — see [Working with large datasets](#working-with-large-datasets-on-windows)),
+`bioc_packages` (Bioconductor, via `BiocManager::install`
 — `impute`, `LEA`, `Rgraphviz`, `graph`, `EBImage`), and INLA/fmesher/inlabru
 (INLA's own repository, installed in that order since inlabru depends on
 INLA).
@@ -185,6 +189,76 @@ To add or remove an **R package**, edit the relevant list in
 To add or remove a **Python package**, edit `python/requirements.txt`,
 delete `python/requirements.lock.txt` so it gets regenerated, run
 `.\modules\03-python.ps1`, then commit the new lock file.
+
+## Working with large datasets on Windows
+
+### Windows tuning (`modules/08-optimize.ps1`)
+
+These generally beat any library change — AV scanning and CPU throttling cost
+more than a faster dataframe. Every step is **best-effort**: corporate images
+often lock these via Group Policy or Tamper Protection, so each one warns and
+continues instead of failing the install. `diagnose.ps1` re-checks them, so a
+blocked tweak shows up as a `[FAIL]` rather than silently costing throughput.
+
+| Tweak | Why |
+|---|---|
+| **Defender exclusions** for the repo, R library and venv | Real-time scanning inspects every file read/write — commonly a **2–5x** I/O penalty on large datasets and package installs. The single biggest win here. Add your data folders to `$Config.Optimize.ExtraExclusionPaths`. |
+| **High performance power plan** | The Balanced plan throttles CPU clocks; visible on long MCMC/INLA runs. |
+| **Long path support** | The 260-char `MAX_PATH` limit breaks `renv` and deeply nested dependency paths. Needs a reboot. |
+| **`RENV_PATHS_CACHE`** | A cache on a stable path is reused across projects *and* machine rebuilds — the point when you reprovision often. |
+| **`.Rprofile`** with `options(Ncpus = detectCores())` | Parallel source installs; matters with 90+ packages. Created only if you don't already have one — an existing `.Rprofile` is never modified, the snippet is printed instead. |
+| **OneDrive check** | Corporate Windows often applies OneDrive Known Folder Move to `Documents`, silently uploading every dataset you touch. Keep data (ideally this repo) somewhere like `C:\work`. |
+
+### ⚠️ Thread oversubscription
+
+Module 02 makes OpenBLAS multi-threaded, which means nested parallelism can
+now work against you: 8 `foreach` workers × 8 BLAS threads each = 64 threads
+on 8 cores, **slower than serial**. Pin BLAS to one thread inside workers:
+
+```r
+library(RhpcBLASctl)
+cl <- parallel::makeCluster(parallel::detectCores())
+parallel::clusterEvalQ(cl, RhpcBLASctl::blas_set_num_threads(1))
+```
+
+`OMP_NUM_THREADS` is deliberately **not** set globally — that would cripple the
+OpenBLAS threading we just enabled. Fix it at the worker level, as above. Set
+`data.table::setDTthreads()` deliberately too (`0` = all cores).
+
+### The larger-than-RAM toolkit
+
+| Tool | Where | Use it for |
+|---|---|---|
+| **duckdb** | R + Python | The workhorse. Out-of-core SQL over Parquet/CSV **larger than RAM**, no server. In R it plugs into `dplyr`, so tidyverse syntax keeps working on data that doesn't fit in memory. |
+| **polars** | Python | Multithreaded Rust dataframes with a streaming engine; largely replaces pandas on big files. |
+| **arrow** / **pyarrow** / **nanoparquet** | R + Python | Parquet — use it instead of CSV for anything large. |
+| **fst**, **qs2** | R | Replace `saveRDS`. `fst` reads single columns without loading the whole file. |
+| **collapse**, **dtplyr**, **vroom** | R | Fast grouped stats; `dplyr` syntax on a `data.table` engine; lazy reading of huge delimited files. |
+| **zarr**, **h5py**, **xarray** | Python | Chunked and labeled N-d arrays. |
+| **connectorx**, **odbc**/**DBI**, **fastexcel** | Python / R | Fast pulls from corporate SQL databases, and a Rust reader for large xlsx. |
+
+### Genomic-scale matrices
+
+Aimed at your `AGHmatrix`/`bWGR`/`AlphaSimR` work:
+
+- **bigstatsr** / **bigsnpr** — file-backed memory-mapped matrices (FBM) for
+  marker data past RAM.
+- **RSpectra** / **irlba** — truncated eigendecomposition/SVD. A full `eigen()`
+  on a large kinship matrix isn't feasible; truncated is routine.
+- **float** — single-precision matrices, halving memory where float64 is overkill.
+- **PLINK 2** is *not* installed here on purpose: Chocolatey's `plink` package
+  is PuTTY's SSH tool, not the genomics one. Download it from
+  https://www.cog-genomics.org/plink/2.0/ — `bigsnpr` interoperates with it.
+
+### Profiling — measure before optimizing
+
+R: **profvis** (visual profiler), **bench** (precise timing), **lobstr**
+(find memory bloat), **RcppParallel**/**RcppEigen**.
+Python: **scalene** (CPU+GPU+memory together), **line_profiler**,
+**memory-profiler**, **bottleneck**/**numexpr**.
+
+Also installed: **uv**, a much faster pip/venv replacement — useful when you
+rebuild machines often.
 
 ## GPU support (read this before expecting GPU training)
 
@@ -326,6 +400,14 @@ re-resolving latest-and-possibly-different ones.
 - **TensorFlow reports 0 GPUs** — expected on native Windows, see
   [GPU support](#gpu-support-read-this-before-expecting-gpu-training). Not a
   bug; use WSL2 for TensorFlow on GPU.
+- **`[FAIL] Defender exclusion` / `Long paths` / `Power plan`** — these are
+  policy-locked on many corporate images. The install continues deliberately;
+  ask IT to exclude your data and library folders, since that's the largest
+  single I/O win available.
+- **`pip install` fails resolving the Python list** — `numba` sometimes lags
+  NumPy releases, and TensorFlow pins NumPy too, so the resolver can conflict.
+  pip reports which packages disagree; the usual fix is to drop `numba` (or
+  pin NumPy) and re-run `.\modules\03-python.ps1`.
 - **Docker Desktop needs WSL2 / a reboot** — this is a Windows requirement,
   not a bug in this repo. Follow the on-screen Docker prompt, reboot, and
   re-run `.\install.ps1`.
@@ -377,7 +459,9 @@ Example output:
   [OK] Chocolatey: Chocolatey v2.3.0
   [OK] R: R scripting front-end version 4.4.1 (...)
   [OK] R OpenBLAS active: OpenBLAS active: TRUE
-  [OK] R key packages load: All 22 key R packages load successfully
+  [OK] R key packages load: All 37 key R packages load successfully
+  [OK] Defender exclusion (repo): C:\work\winds
+  [FAIL] Long paths enabled: disabled -- renv paths can exceed MAX_PATH
   [OK] NumPy BLAS config: openblas64_ ...
   [OK] ML libraries (torch/TF): CPU parallel speedup: 7.41x | GPU vs CPU speedup: 38.2x
   [FAIL] Docker: command 'docker' not found on PATH

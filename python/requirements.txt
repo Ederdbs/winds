@@ -1,8 +1,49 @@
+# Core scientific stack
 numpy
 scipy
 pandas
 matplotlib
-scikit-learn
 statsmodels
+scikit-learn
 jupyterlab
 ipykernel
+
+# Larger-than-RAM data. polars is multithreaded with a streaming engine for
+# data past RAM; duckdb is out-of-core SQL over Parquet/CSV; pyarrow is the
+# Parquet layer (the R side already has arrow).
+polars
+duckdb
+pyarrow
+
+# Chunked/labeled arrays for big numeric and raster-style data.
+zarr
+h5py
+xarray
+
+# Fast I/O: connectorx pulls from SQL databases far faster than pandas.read_sql,
+# fastexcel is a Rust xlsx reader for large corporate spreadsheets.
+connectorx
+fastexcel
+openpyxl
+sqlalchemy
+
+# Gradient boosting -- aggressively multithreaded, and on tabular problems
+# these generally beat neural nets.
+xgboost
+lightgbm
+
+# Parallelism, JIT and progress
+numba
+joblib
+tqdm
+psutil
+
+# Profiling. scalene covers CPU+GPU+memory together.
+scalene
+line_profiler
+memory-profiler
+bottleneck
+numexpr
+
+# Much faster pip/venv replacement -- useful when rebuilding machines often.
+uv

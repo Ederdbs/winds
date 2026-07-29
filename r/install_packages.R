@@ -37,7 +37,25 @@ cran_packages <- c(
   "foreach", "doParallel", "future", "furrr", "future.apply", "progressr",
   "bigrquery", "openxlsx", "httr2",
   "remotes", "devtools", "testthat", "covr", "optparse",
-  "Rsymphony", "RhpcBLASctl"
+  "Rsymphony", "RhpcBLASctl",
+
+  # Larger-than-RAM data. duckdb is the workhorse: out-of-core SQL over
+  # Parquet/CSV that plugs into dplyr, so tidyverse syntax keeps working on
+  # data that does not fit in memory. fst/qs2 replace saveRDS for big objects
+  # (fst reads single columns without loading the file).
+  "duckdb", "fst", "qs2", "collapse", "dtplyr", "vroom", "nanoparquet",
+
+  # Genomic-scale matrices. bigstatsr/bigsnpr give file-backed memory-mapped
+  # matrices for marker data past RAM; RSpectra/irlba do truncated
+  # eigen/SVD, since a full eigen() on a large AGHmatrix kinship matrix is
+  # not feasible; float halves memory where float64 is overkill.
+  "bigstatsr", "bigsnpr", "RSpectra", "irlba", "float",
+
+  # Large rasters + corporate databases.
+  "exactextractr", "stars", "odbc", "DBI",
+
+  # Profiling and benchmarking -- measure before optimizing.
+  "profvis", "bench", "lobstr", "RcppParallel", "RcppEigen", "parallelly"
 )
 
 # Bioconductor packages (installed via BiocManager, not install.packages).

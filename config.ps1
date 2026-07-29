@@ -19,6 +19,15 @@ $Config = @{
         ChocoPackages = @('python3')
         VenvPath      = "$PSScriptRoot\.venv"
     }
+    Optimize = @{
+        # renv cache on a stable path is reused across projects and machine
+        # rebuilds. Point this at your fastest local disk (not a network share
+        # and not a OneDrive-synced folder).
+        RenvCachePath        = "$env:LOCALAPPDATA\renv\cache"
+        # Extra folders to exclude from Defender scanning -- add your data
+        # directories here, e.g. @('C:\work\data', 'D:\datasets').
+        ExtraExclusionPaths  = @()
+    }
     Ml = @{
         # PyTorch on Windows defaults to CPU-ONLY wheels on PyPI. CUDA builds
         # live on a separate index, so the URL below is what actually gets you

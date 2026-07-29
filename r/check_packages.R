@@ -15,7 +15,11 @@ key_packages <- c(
   "sf", "s2", "terra", "raster",       # bundled GDAL/PROJ/GEOS
   "arrow", "magick", "Cairo",          # bundled native libraries
   "Rsymphony",                         # bundled SYMPHONY
-  "Rgraphviz", "EBImage", "impute", "LEA", "graph"  # Bioconductor
+  "Rgraphviz", "EBImage", "impute", "LEA", "graph", # Bioconductor
+  "duckdb", "fst", "qs2", "collapse", "vroom",      # compiled large-data stack
+  "bigstatsr", "bigsnpr", "RSpectra", "irlba", "float",  # file-backed/truncated algebra
+  "exactextractr", "stars", "odbc",    # rasters + ODBC driver manager
+  "RcppParallel", "RcppEigen"          # parallel/linear-algebra headers
 )
 
 failed <- character(0)

@@ -81,6 +81,31 @@ if (Test-Path $venvPython) {
     Add-Result "ML libraries (torch/TF)" $mlPass (($mlOutput | Select-String 'speedup|FAIL:' | Select-Object -First 3) -join ' | ')
 }
 
+# Windows tuning (Tier 0). These are reported so a policy-blocked tweak is
+# visible rather than silently costing you throughput.
+$repoRoot = (Resolve-Path "$PSScriptRoot\..").Path
+
+if (Get-Command Get-MpPreference -ErrorAction SilentlyContinue) {
+    $excluded = @()
+    try { $excluded = (Get-MpPreference -ErrorAction Stop).ExclusionPath } catch { }
+    $isExcluded = $excluded -contains $repoRoot
+    Add-Result "Defender exclusion (repo)" $isExcluded $(if ($isExcluded) { $repoRoot } else { "not excluded -- costs 2-5x on large-file I/O" })
+}
+
+$plan = (powercfg /getactivescheme 2>&1 | Out-String).Trim()
+Add-Result "Power plan" ($plan -notmatch 'Balanced') $plan
+
+try {
+    $lp = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem' -Name LongPathsEnabled -ErrorAction Stop).LongPathsEnabled
+} catch { $lp = 0 }
+Add-Result "Long paths enabled" ($lp -eq 1) $(if ($lp -eq 1) { "enabled" } else { "disabled -- renv paths can exceed MAX_PATH" })
+
+$notSynced = ($repoRoot -notlike '*OneDrive*')
+Add-Result "Not OneDrive-synced" $notSynced $(if ($notSynced) { $repoRoot } else { "repo is inside OneDrive -- datasets will be uploaded" })
+
+$renvCache = [Environment]::GetEnvironmentVariable('RENV_PATHS_CACHE', 'User')
+Add-Result "renv cache configured" ([bool]$renvCache) $(if ($renvCache) { $renvCache } else { "unset -- packages get rebuilt on every machine" })
+
 Write-Step "Diagnostic report"
 $results | ForEach-Object {
     if ($_.Pass) { Write-Ok "$($_.Check): $($_.Detail)" } else { Write-Fail "$($_.Check): $($_.Detail)" }
