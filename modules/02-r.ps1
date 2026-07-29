@@ -68,4 +68,9 @@ Install-OpenBlasForR -RBinDir $rBinDir
 
 Write-Step "Restoring R package environment (renv)"
 & Rscript "$PSScriptRoot\..\r\install_packages.R"
+# $ErrorActionPreference does not catch non-zero exits from native executables,
+# so check explicitly -- install_packages.R exits 1 if any package is missing.
+if ($LASTEXITCODE -ne 0) {
+    throw "R package installation reported missing packages (see the list above)."
+}
 Write-Ok "R environment ready"

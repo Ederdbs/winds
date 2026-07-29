@@ -116,11 +116,26 @@ adding a Chocolatey package, changing the Positron winget ID).
 R packages come from three sources, each installed by
 `r/install_packages.R`: `cran_packages` (CRAN, most of the list — Rcpp,
 tidyverse, sf/terra/raster geospatial stack, ggplot2 ecosystem, MCMCglmm,
-alphaSimR, etc.), `bioc_packages` (Bioconductor, via `BiocManager::install`
+AlphaSimR, etc.), `bioc_packages` (Bioconductor, via `BiocManager::install`
 — `impute`, `LEA`, `Rgraphviz`, `graph`, `EBImage`), and INLA/fmesher/inlabru
 (INLA's own repository, installed in that order since inlabru depends on
-INLA). `Rgraphviz` also needs the system Graphviz binary, installed via
-Chocolatey in `modules/02-r.ps1` (`$Config.R.SystemChocoPackages`).
+INLA).
+
+**System dependencies**: `install_packages.R` sets
+`options(pkgType = "binary")`, and on Windows the CRAN/Bioconductor binaries
+bundle the native libraries these packages need — GDAL/PROJ/GEOS for
+`sf`/`s2`/`terra`/`raster`, ImageMagick for `magick`, SYMPHONY for
+`Rsymphony`, plus Cairo and Arrow. So no separate system-library install is
+required. That pin matters: R's default `"both"` can silently fall back to a
+source build that *does* need those libraries present, which is the usual
+cause of mystery failures on a fresh machine. Chocolatey also installs
+Graphviz (`$Config.R.SystemChocoPackages`) — `Rgraphviz`'s binary bundles its
+own copy, so this is for the standalone `dot` CLI rather than a hard
+requirement.
+
+`parallel` and `splines` are **base R** — they ship with R and are
+deliberately absent from the lists (`install.packages` errors on them).
+`tidyr` arrives via `tidyverse`.
 
 To add or remove an **R package**, edit the relevant list in
 `r/install_packages.R`, run `.\modules\02-r.ps1` (or the full
@@ -129,6 +144,36 @@ To add or remove an **R package**, edit the relevant list in
 To add or remove a **Python package**, edit `python/requirements.txt`,
 delete `python/requirements.lock.txt` so it gets regenerated, run
 `.\modules\03-python.ps1`, then commit the new lock file.
+
+## Licensing
+
+Everything here is free of charge to install, but three items carry
+conditions worth knowing in a corporate environment:
+
+| Item | License | Catch |
+|---|---|---|
+| **Docker Desktop** | Proprietary | ⚠️ **Free only for individuals, education, open source, and small business — "fewer than 250 employees AND less than $10 million in annual revenue."** Above either threshold, commercial use requires a paid subscription. |
+| **Claude Code** | Proprietary | ⚠️ The CLI installs free, but using it requires a paid Anthropic plan or pay-per-use API credits. |
+| **OpenCode** | Open source | CLI is free; it needs a model provider — either a paid API key or a local model via Ollama (free). |
+| **VS Code** | Microsoft EULA | The Chocolatey `vscode` package is Microsoft's branded build: free of charge and proprietary (telemetry included), not the MIT `code-oss` source build. |
+| **Positron** | Elastic License 2.0 | Free for personal, academic, and commercial use; you may not host it as a service to third parties. Source-available, not OSI-open-source. |
+| **bigrquery** (R) | Open source | Package is free; the Google BigQuery *service* it talks to is billed per query/storage. |
+| **Ollama models** | Varies | Ollama itself is MIT. Individual models carry their own terms (e.g. Llama's community license has restrictions at very large scale) — check the model card. |
+
+If your employer exceeds Docker's thresholds, swap Docker Desktop for a
+license-free alternative — **Podman Desktop** or **Rancher Desktop** (both
+Apache 2.0), or the Docker CLI/Engine directly inside WSL2, which is not
+covered by the Docker Desktop license. Remove `docker-desktop` from
+`$Config.Ides.ChocoPackages` (or always run with `-SkipDocker`) and install
+your chosen replacement instead.
+
+Everything else is genuinely free and open source: R (GPL), Python (PSF),
+OpenBLAS (BSD), Rtools/MinGW-w64/gcc/gfortran (GPL), Git (GPL-2), Git LFS
+(MIT), Quarto (MIT), Pandoc (GPL), TinyTeX/TeX Live (free), Node.js (MIT),
+PowerShell 7 (MIT), Windows Terminal (MIT), Chocolatey (Apache-2.0, community
+edition), Graphviz (EPL), and every R and Python package in the lists
+(GPL/MIT/BSD/Apache/Artistic-2.0 — `AlphaSimR` MIT, `MCMCpack` GPL-3,
+`factoextra` GPL-2, `Rsymphony` EPL, INLA GPL).
 
 ## Reproducibility
 
@@ -206,14 +251,27 @@ re-resolving latest-and-possibly-different ones.
 
 `diagnostics/diagnose.ps1` (run automatically at the end of `install.ps1`)
 checks every tool is on PATH, runs `r/benchmark.R` to confirm OpenBLAS is
-active and report matrix-multiply throughput, and checks NumPy's BLAS
-backend. Example output:
+active and report matrix-multiply throughput, runs `r/check_packages.R` to
+load-test the compiled/native R packages, and checks NumPy's BLAS backend.
+
+Two separate R checks, because they catch different failures:
+
+- `r/install_packages.R` verifies every expected package is **installed** and
+  exits non-zero listing any gaps. A batch `install.packages()` only *warns*
+  on a failed build, so without this a machine could report healthy with a
+  dozen packages missing.
+- `r/check_packages.R` verifies the risky packages actually **load**.
+  Installed is not loadable — a compiled package can install cleanly and then
+  fail against the swapped BLAS DLL or a missing runtime.
+
+Example output:
 
 ```
 ==> Diagnostic report
   [OK] Chocolatey: Chocolatey v2.3.0
   [OK] R: R scripting front-end version 4.4.1 (...)
   [OK] R OpenBLAS active: OpenBLAS active: TRUE
+  [OK] R key packages load: All 22 key R packages load successfully
   [OK] NumPy BLAS config: openblas64_ ...
   [FAIL] Docker: command 'docker' not found on PATH
 ...

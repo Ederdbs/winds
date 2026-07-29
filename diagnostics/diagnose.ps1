@@ -49,6 +49,16 @@ if (Test-CommandExists 'Rscript') {
     Add-Result "R OpenBLAS active" $benchPass ($benchOutput -join ' | ')
 }
 
+# R: confirm the packages that are most likely to break actually LOAD.
+# "Installed" is not the same as "loadable" -- compiled packages can install
+# fine and then fail to load against a swapped BLAS DLL or a missing runtime.
+if (Test-CommandExists 'Rscript') {
+    $loadCheck = & Rscript "r\check_packages.R" 2>&1
+    $loadPass = ($LASTEXITCODE -eq 0)
+    $loadCheck | Out-String | Write-Host
+    Add-Result "R key packages load" $loadPass ($loadCheck | Select-Object -Last 1)
+}
+
 # Python: confirm NumPy is linked against an optimized BLAS.
 if (Test-CommandExists 'python') {
     $venvPython = ".venv\Scripts\python.exe"
