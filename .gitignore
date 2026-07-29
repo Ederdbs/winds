@@ -2,3 +2,6 @@
 .venv/
 renv/library/
 diagnostics/logs/
+README_files/*
+README.md
+README.html
